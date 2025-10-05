@@ -57,21 +57,18 @@ impl<R: Read + Seek> CupxFile<R> {
         let mut buffer = vec![0u8; search_size as usize];
         reader.read_exact(&mut buffer)?;
 
-        // Find all EOCD signatures
-        let mut eocd_offsets = Vec::new();
-        for i in 0..buffer.len().saturating_sub(EOCD_SIGNATURE.len()) {
-            if &buffer[i..i + EOCD_SIGNATURE.len()] == EOCD_SIGNATURE {
-                eocd_offsets.push(search_start + i as u64);
-            }
+        // Find the second-to-last EOCD signature using fast pattern matching
+        let mut prev = None;
+        let mut current = None;
+
+        for offset in memchr::memmem::find_iter(&buffer, EOCD_SIGNATURE) {
+            prev = current;
+            current = Some(search_start + offset as u64);
         }
 
-        if eocd_offsets.len() < 2 {
+        let Some(first_eocd_offset) = prev else {
             return Err(Error::InvalidCupx);
-        }
-
-        // The last EOCD is for the second ZIP, second-to-last is for the first ZIP
-        let first_eocd_offset = eocd_offsets[eocd_offsets.len() - 2];
-        let _second_eocd_offset = eocd_offsets[eocd_offsets.len() - 1];
+        };
 
         // Calculate the boundary: first EOCD offset + EOCD record length
         // Read comment length from first EOCD to get full record size

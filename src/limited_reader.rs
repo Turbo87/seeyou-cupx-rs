@@ -25,11 +25,11 @@ impl<R: Read + Seek> LimitedReader<R> {
 
 impl<R: Read + Seek> Read for LimitedReader<R> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let remaining = self.end.saturating_sub(self.pos);
-        if remaining == 0 {
+        if self.pos >= self.end {
             return Ok(0);
         }
 
+        let remaining = self.end - self.pos;
         let to_read = (buf.len() as u64).min(remaining) as usize;
         let n = self.inner.read(&mut buf[..to_read])?;
         self.pos += n as u64;
