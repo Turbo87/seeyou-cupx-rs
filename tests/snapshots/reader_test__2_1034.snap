@@ -1,0 +1,6 @@
+---
+source: tests/reader_test.rs
+expression: buffer
+extension: jpg
+snapshot_kind: binary
+---

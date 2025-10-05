@@ -11,3 +11,6 @@ exclude = ["docs/*", "examples/*", "tests/*", ".gitignore"]
 seeyou-cup = "0.2.0"
 thiserror = "2.0.17"
 zip = { version = "5.1.1", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+insta = "1.43.2"

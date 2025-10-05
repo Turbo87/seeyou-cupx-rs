@@ -119,17 +119,42 @@ impl<R: Read + Seek> CupxFile<R> {
         &self.cup_file().tasks
     }
 
-    // /// Get reader for image by filename (without "pics/" prefix)
-    // /// Returns error if image doesn't exist
-    // /// Only one image can be read at a time (requires &mut self)
-    // pub fn image(&mut self, filename: &str) -> Result<impl Read + '_, Error> {
-    //     todo!()
-    // }
-    //
-    // /// Iterator over all available image filenames (without "pics/" prefix)
-    // pub fn image_names(&self) -> impl Iterator<Item = String> {
-    //     todo!()
-    // }
+    /// Get reader for image by filename (without "pics/" prefix)
+    /// Returns error if image doesn't exist
+    /// Only one image can be read at a time (requires &mut self)
+    pub fn read_picture(&mut self, filename: &str) -> Result<impl Read + '_, Error> {
+        // Try to find the file with case-insensitive prefix matching
+        let target_filename = filename.to_lowercase();
+        let actual_path = self
+            .pics_archive
+            .file_names()
+            .find(|name| {
+                name.len() >= 5
+                    && name.is_char_boundary(5)
+                    && name[..5].eq_ignore_ascii_case("pics/")
+                    && name[5..].to_lowercase() == target_filename
+            })
+            .ok_or(zip::result::ZipError::FileNotFound)?
+            .to_string();
+
+        let file = self.pics_archive.by_name(&actual_path)?;
+        Ok(file)
+    }
+
+    /// Iterator over all available image filenames (without "pics/" prefix)
+    pub fn picture_names(&self) -> impl Iterator<Item = String> + '_ {
+        self.pics_archive.file_names().filter_map(|name| {
+            // Handle case-insensitive "pics/" prefix
+            if name.len() >= 5
+                && name.is_char_boundary(5)
+                && name[..5].eq_ignore_ascii_case("pics/")
+            {
+                Some(name[5..].to_string())
+            } else {
+                None
+            }
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
