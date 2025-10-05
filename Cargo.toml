@@ -13,4 +13,9 @@ thiserror = "2.0.17"
 zip = { version = "5.1.1", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
+criterion = "0.7.0"
 insta = "1.43.2"
+
+[[bench]]
+name = "cupx_parsing"
+harness = false
