@@ -5,7 +5,7 @@ description = "A Rust library for parsing and writing SeeYou CUPX files, commonl
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Turbo87/seeyou-cupx-rs"
 edition = "2024"
-exclude = ["docs/*", "examples/*", "tests/*", ".gitignore"]
+exclude = [".github/*", "benches/*", "docs/*", "examples/*", "tests/*", ".gitignore"]
 
 [dependencies]
 memchr = "2.7.4"
