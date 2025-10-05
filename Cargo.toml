@@ -20,3 +20,9 @@ insta = "1.43.2"
 [[bench]]
 name = "cupx_parsing"
 harness = false
+
+[package.metadata.release]
+pre-release-commit-message = "Release v{{version}}"
+tag-message = ""
+# Disable `cargo publish` since we use CI for publishing
+publish = false
