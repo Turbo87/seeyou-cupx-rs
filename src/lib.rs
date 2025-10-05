@@ -57,12 +57,12 @@ pub struct Warning {
     pub message: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    Io(std::io::Error),
-    Zip(zip::result::ZipError),
-    Cup(seeyou_cup::Error),
-    MissingPointsCup,
-    ImageNotFound(String),
-    InvalidCupxStructure(String),
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Zip(#[from] zip::result::ZipError),
+    #[error(transparent)]
+    Cup(#[from] seeyou_cup::Error),
 }
