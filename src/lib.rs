@@ -1,9 +1,10 @@
 use limited_reader::LimitedReader;
 use seeyou_cup::{CupEncoding, CupFile, Task, Waypoint};
+use std::collections::HashMap;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 use std::ops::Range;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod limited_reader;
 
@@ -99,10 +100,14 @@ impl<R: Read + Seek> CupxFile<R> {
             Some(encoding) => CupFile::from_reader_with_encoding(cup_file, encoding)?,
             None => CupFile::from_reader(cup_file)?,
         };
-        warnings.extend(cup_warnings.into_iter().map(|issue| Warning::CupParseIssue {
-            message: issue.message().to_string(),
-            line: issue.line(),
-        }));
+        warnings.extend(
+            cup_warnings
+                .into_iter()
+                .map(|issue| Warning::CupParseIssue {
+                    message: issue.message().to_string(),
+                    line: issue.line(),
+                }),
+        );
 
         // Create pics archive if present
         let pics_archive = if let Some(boundary) = pics_boundary {
@@ -180,6 +185,102 @@ impl<R: Read + Seek> CupxFile<R> {
     }
 }
 
+pub struct CupxWriter {
+    cup_file: CupFile,
+    pictures: HashMap<String, PictureSource>,
+}
+
+pub enum PictureSource {
+    Bytes(Vec<u8>),
+    Path(PathBuf),
+}
+
+impl From<Vec<u8>> for PictureSource {
+    fn from(bytes: Vec<u8>) -> Self {
+        PictureSource::Bytes(bytes)
+    }
+}
+
+impl From<PathBuf> for PictureSource {
+    fn from(path: PathBuf) -> Self {
+        PictureSource::Path(path)
+    }
+}
+
+impl From<&Path> for PictureSource {
+    fn from(path: &Path) -> Self {
+        PictureSource::Path(path.to_path_buf())
+    }
+}
+
+impl CupxWriter {
+    pub fn new(cup_file: CupFile) -> Self {
+        Self {
+            cup_file,
+            pictures: HashMap::new(),
+        }
+    }
+
+    pub fn add_picture(
+        &mut self,
+        filename: impl Into<String>,
+        source: impl Into<PictureSource>,
+    ) -> &mut Self {
+        self.pictures.insert(filename.into(), source.into());
+        self
+    }
+
+    pub fn write<W: Write + Seek>(&self, writer: W) -> Result<(), Error> {
+        for filename in self.pictures.keys() {
+            if filename.is_empty() || filename.contains('/') || filename.contains('\\') {
+                return Err(Error::InvalidFilename(filename.clone()));
+            }
+        }
+
+        let options = zip::write::FileOptions::<()>::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        let mut pics_zip = zip::ZipWriter::new(writer);
+
+        for (filename, source) in &self.pictures {
+            let zip_filename = format!("pics/{}", filename);
+            pics_zip.start_file(&zip_filename, options)?;
+
+            match source {
+                PictureSource::Bytes(data) => {
+                    pics_zip.write_all(data)?;
+                }
+                PictureSource::Path(path) => {
+                    let mut file = File::open(path)?;
+                    std::io::copy(&mut file, &mut pics_zip)?;
+                }
+            }
+        }
+
+        let mut writer = pics_zip.finish()?;
+
+        let mut points_buffer = Vec::new();
+        let mut points_zip = zip::ZipWriter::new(Cursor::new(&mut points_buffer));
+        points_zip.start_file("POINTS.CUP", options)?;
+        self.cup_file.to_writer(&mut points_zip)?;
+        points_zip.finish()?;
+        writer.write_all(&points_buffer)?;
+
+        Ok(())
+    }
+
+    pub fn write_to_vec(&self) -> Result<Vec<u8>, Error> {
+        let mut buffer = Vec::new();
+        self.write(Cursor::new(&mut buffer))?;
+        Ok(buffer)
+    }
+
+    pub fn write_to_path(&self, path: impl AsRef<Path>) -> Result<(), Error> {
+        let file = File::create(path)?;
+        self.write(file)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Warning {
     NoPicturesArchive,
@@ -196,4 +297,6 @@ pub enum Error {
     Cup(#[from] seeyou_cup::Error),
     #[error("Invalid CUPX file: could not find two ZIP archives")]
     InvalidCupx,
+    #[error("Invalid picture filename: {0}")]
+    InvalidFilename(String),
 }

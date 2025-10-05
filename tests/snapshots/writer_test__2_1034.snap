@@ -1,0 +1,6 @@
+---
+source: tests/writer_test.rs
+expression: read_data
+extension: jpg
+snapshot_kind: binary
+---
