@@ -70,7 +70,7 @@ impl<R: Read + Seek> CupxFile<R> {
         let mut warnings = Vec::new();
 
         // Determine points archive range and whether pics exist
-        let (points_start, pics_boundary) = if let Some(first_eocd_offset) = prev {
+        let pics_boundary = if let Some(first_eocd_offset) = prev {
             // Two ZIP archives found (normal case with pictures)
             // Calculate the boundary: first EOCD offset + EOCD record length
             // Read comment length from first EOCD to get full record size
@@ -80,18 +80,19 @@ impl<R: Read + Seek> CupxFile<R> {
             let comment_len = u16::from_le_bytes(comment_len_buf) as u64;
 
             let boundary = first_eocd_offset + EOCD_MIN_SIZE + comment_len;
-            (boundary, Some(boundary))
+            Some(boundary)
         } else if current.is_some() {
             // Only one ZIP archive found (no pictures)
             warnings.push(Warning {
                 message: "CUPX file contains no pictures archive".to_string(),
             });
-            (0, None)
+            None
         } else {
             return Err(Error::InvalidCupx);
         };
 
         // Read the points archive to get the CUP file
+        let points_start = pics_boundary.unwrap_or(0);
         let points_reader = LimitedReader::new(reader, points_start..)?;
         let mut points_archive = zip::ZipArchive::new(points_reader)?;
 
