@@ -24,6 +24,6 @@ fn test_ec25_no_pictures_zip() {
     let (cupx, warnings) = CupxFile::from_path("tests/fixtures/EC25_no_pictures_zip.cupx").unwrap();
     assert_eq!(cupx.waypoints().len(), 221);
     assert_eq!(cupx.tasks().len(), 0);
-    assert_compact_debug_snapshot!(warnings, @r#"[Warning { message: "CUPX file contains no pictures archive" }]"#);
+    assert_compact_debug_snapshot!(warnings, @"[NoPicturesArchive]");
     assert_eq!(cupx.picture_names().count(), 0);
 }

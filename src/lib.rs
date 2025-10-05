@@ -83,9 +83,7 @@ impl<R: Read + Seek> CupxFile<R> {
             Some(boundary)
         } else if current.is_some() {
             // Only one ZIP archive found (no pictures)
-            warnings.push(Warning {
-                message: "CUPX file contains no pictures archive".to_string(),
-            });
+            warnings.push(Warning::NoPicturesArchive);
             None
         } else {
             return Err(Error::InvalidCupx);
@@ -97,10 +95,14 @@ impl<R: Read + Seek> CupxFile<R> {
         let mut points_archive = zip::ZipArchive::new(points_reader)?;
 
         let cup_file = points_archive.by_name("POINTS.CUP")?;
-        let (cup_file, _) = match encoding {
+        let (cup_file, cup_warnings) = match encoding {
             Some(encoding) => CupFile::from_reader_with_encoding(cup_file, encoding)?,
             None => CupFile::from_reader(cup_file)?,
         };
+        warnings.extend(cup_warnings.into_iter().map(|issue| Warning::CupParseIssue {
+            message: issue.message().to_string(),
+            line: issue.line(),
+        }));
 
         // Create pics archive if present
         let pics_archive = if let Some(boundary) = pics_boundary {
@@ -179,8 +181,9 @@ impl<R: Read + Seek> CupxFile<R> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Warning {
-    pub message: String,
+pub enum Warning {
+    NoPicturesArchive,
+    CupParseIssue { message: String, line: Option<u64> },
 }
 
 #[derive(Debug, thiserror::Error)]
