@@ -1,4 +1,5 @@
 use seeyou_cup::{CupEncoding, CupFile, Task, Waypoint};
+use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::Path;
 
@@ -8,13 +9,15 @@ pub struct CupxFile {
 
 impl CupxFile {
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<(Self, Vec<Warning>), Error> {
-        todo!()
+        let file = File::open(path)?;
+        Self::from_reader(file)
     }
     pub fn from_path_with_encoding<P: AsRef<Path>>(
         path: P,
         encoding: CupEncoding,
     ) -> Result<(Self, Vec<Warning>), Error> {
-        todo!()
+        let file = File::open(path)?;
+        Self::from_reader_with_encoding(file, encoding)
     }
 
     pub fn from_reader<R: Read + Seek>(reader: R) -> Result<(Self, Vec<Warning>), Error> {
