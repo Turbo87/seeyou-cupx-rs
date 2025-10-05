@@ -20,7 +20,21 @@ impl CupxFile {
         Self::from_reader_with_encoding(file, encoding)
     }
 
-    pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<(Self, Vec<Warning>), Error> {
+    pub fn from_reader<R: Read + Seek>(reader: R) -> Result<(Self, Vec<Warning>), Error> {
+        Self::from_reader_inner(reader, None)
+    }
+
+    pub fn from_reader_with_encoding<R: Read + Seek>(
+        reader: R,
+        encoding: CupEncoding,
+    ) -> Result<(Self, Vec<Warning>), Error> {
+        Self::from_reader_inner(reader, Some(encoding))
+    }
+
+    fn from_reader_inner<R: Read + Seek>(
+        mut reader: R,
+        encoding: Option<CupEncoding>,
+    ) -> Result<(Self, Vec<Warning>), Error> {
         const EOCD_SIGNATURE: &[u8] = b"PK\x05\x06";
         const EOCD_MIN_SIZE: u64 = 22;
         const MAX_COMMENT_SIZE: u64 = 65535;
@@ -72,16 +86,12 @@ impl CupxFile {
         let mut points_archive = zip::ZipArchive::new(limited_reader)?;
 
         let cup_file = points_archive.by_name("POINTS.CUP")?;
-        let (cup_file, _) = CupFile::from_reader(cup_file)?;
+        let (cup_file, _) = match encoding {
+            Some(encoding) => CupFile::from_reader_with_encoding(cup_file, encoding)?,
+            None => CupFile::from_reader(cup_file)?,
+        };
 
         Ok((Self { cup_file }, Vec::new()))
-    }
-
-    pub fn from_reader_with_encoding<R: Read + Seek>(
-        reader: R,
-        encoding: CupEncoding,
-    ) -> Result<(Self, Vec<Warning>), Error> {
-        todo!()
     }
 
     pub fn cup_file(&self) -> &CupFile {
