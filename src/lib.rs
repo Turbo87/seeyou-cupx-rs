@@ -51,13 +51,32 @@ impl CupxFile {
 
         // The last EOCD is for the second ZIP, second-to-last is for the first ZIP
         let first_eocd_offset = eocd_offsets[eocd_offsets.len() - 2];
-        let second_eocd_offset = eocd_offsets[eocd_offsets.len() - 1];
+        let _second_eocd_offset = eocd_offsets[eocd_offsets.len() - 1];
 
-        dbg!(first_eocd_offset);
-        dbg!(second_eocd_offset);
+        // Calculate the boundary: first EOCD offset + EOCD record length
+        // Read comment length from first EOCD to get full record size
+        reader.seek(std::io::SeekFrom::Start(first_eocd_offset + 20))?;
+        let mut comment_len_buf = [0u8; 2];
+        reader.read_exact(&mut comment_len_buf)?;
+        let comment_len = u16::from_le_bytes(comment_len_buf) as u64;
 
-        todo!()
+        let boundary = first_eocd_offset + EOCD_MIN_SIZE + comment_len;
+        let second_zip_size = file_size - boundary;
+
+        // Create a limited reader for the second ZIP archive
+        reader.seek(std::io::SeekFrom::Start(boundary))?;
+        let mut buf = vec![0u8; second_zip_size as usize];
+        reader.read_exact(&mut buf)?;
+
+        let limited_reader = std::io::Cursor::new(buf);
+        let mut points_archive = zip::ZipArchive::new(limited_reader)?;
+
+        let cup_file = points_archive.by_name("POINTS.CUP")?;
+        let (cup_file, _) = CupFile::from_reader(cup_file)?;
+
+        Ok((Self { cup_file }, Vec::new()))
     }
+
     pub fn from_reader_with_encoding<R: Read + Seek>(
         reader: R,
         encoding: CupEncoding,
