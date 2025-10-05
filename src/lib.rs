@@ -8,7 +8,7 @@ mod limited_reader;
 
 pub struct CupxFile<R> {
     cup_file: CupFile,
-    pics_archive: zip::ZipArchive<LimitedReader<R>>,
+    pics_archive: Option<zip::ZipArchive<LimitedReader<R>>>,
 }
 
 impl CupxFile<File> {
@@ -66,21 +66,32 @@ impl<R: Read + Seek> CupxFile<R> {
             current = Some(search_start + offset as u64);
         }
 
-        let Some(first_eocd_offset) = prev else {
+        let mut warnings = Vec::new();
+
+        // Determine points archive range and whether pics exist
+        let (points_start, points_end, pics_boundary) = if let Some(first_eocd_offset) = prev {
+            // Two ZIP archives found (normal case with pictures)
+            // Calculate the boundary: first EOCD offset + EOCD record length
+            // Read comment length from first EOCD to get full record size
+            reader.seek(SeekFrom::Start(first_eocd_offset + 20))?;
+            let mut comment_len_buf = [0u8; 2];
+            reader.read_exact(&mut comment_len_buf)?;
+            let comment_len = u16::from_le_bytes(comment_len_buf) as u64;
+
+            let boundary = first_eocd_offset + EOCD_MIN_SIZE + comment_len;
+            (boundary, file_size, Some(boundary))
+        } else if current.is_some() {
+            // Only one ZIP archive found (no pictures)
+            warnings.push(Warning {
+                message: "CUPX file contains no pictures archive".to_string(),
+            });
+            (0, file_size, None)
+        } else {
             return Err(Error::InvalidCupx);
         };
 
-        // Calculate the boundary: first EOCD offset + EOCD record length
-        // Read comment length from first EOCD to get full record size
-        reader.seek(SeekFrom::Start(first_eocd_offset + 20))?;
-        let mut comment_len_buf = [0u8; 2];
-        reader.read_exact(&mut comment_len_buf)?;
-        let comment_len = u16::from_le_bytes(comment_len_buf) as u64;
-
-        let boundary = first_eocd_offset + EOCD_MIN_SIZE + comment_len;
-
-        // First, read the points archive to get the CUP file
-        let points_reader = LimitedReader::new(reader, boundary, file_size)?;
+        // Read the points archive to get the CUP file
+        let points_reader = LimitedReader::new(reader, points_start, points_end)?;
         let mut points_archive = zip::ZipArchive::new(points_reader)?;
 
         let cup_file = points_archive.by_name("POINTS.CUP")?;
@@ -89,19 +100,22 @@ impl<R: Read + Seek> CupxFile<R> {
             None => CupFile::from_reader(cup_file)?,
         };
 
-        // Now convert points_archive back to the underlying reader and create pics_archive
-        let limited_reader = points_archive.into_inner();
-        let reader = limited_reader.into_inner();
-        let pics_reader = LimitedReader::new(reader, 0, boundary)?;
-        let pics_archive = zip::ZipArchive::new(pics_reader)?;
+        // Create pics archive if present
+        let pics_archive = if let Some(boundary) = pics_boundary {
+            let limited_reader = points_archive.into_inner();
+            let reader = limited_reader.into_inner();
+            let pics_reader = LimitedReader::new(reader, 0, boundary)?;
+            Some(zip::ZipArchive::new(pics_reader)?)
+        } else {
+            None
+        };
 
-        Ok((
-            Self {
-                cup_file,
-                pics_archive,
-            },
-            Vec::new(),
-        ))
+        let cupx_file = Self {
+            cup_file,
+            pics_archive,
+        };
+
+        Ok((cupx_file, warnings))
     }
 
     pub fn cup_file(&self) -> &CupFile {
@@ -120,10 +134,14 @@ impl<R: Read + Seek> CupxFile<R> {
     /// Returns error if image doesn't exist
     /// Only one image can be read at a time (requires &mut self)
     pub fn read_picture(&mut self, filename: &str) -> Result<impl Read + '_, Error> {
+        let pics_archive = self
+            .pics_archive
+            .as_mut()
+            .ok_or(zip::result::ZipError::FileNotFound)?;
+
         // Try to find the file with case-insensitive prefix matching
         let target_filename = filename.to_lowercase();
-        let actual_path = self
-            .pics_archive
+        let actual_path = pics_archive
             .file_names()
             .find(|name| {
                 name.len() >= 5
@@ -134,23 +152,27 @@ impl<R: Read + Seek> CupxFile<R> {
             .ok_or(zip::result::ZipError::FileNotFound)?
             .to_string();
 
-        let file = self.pics_archive.by_name(&actual_path)?;
+        let file = pics_archive.by_name(&actual_path)?;
         Ok(file)
     }
 
     /// Iterator over all available image filenames (without "pics/" prefix)
     pub fn picture_names(&self) -> impl Iterator<Item = String> + '_ {
-        self.pics_archive.file_names().filter_map(|name| {
-            // Handle case-insensitive "pics/" prefix
-            if name.len() >= 5
-                && name.is_char_boundary(5)
-                && name[..5].eq_ignore_ascii_case("pics/")
-            {
-                Some(name[5..].to_string())
-            } else {
-                None
-            }
-        })
+        self.pics_archive
+            .as_ref()
+            .into_iter()
+            .flat_map(|archive| archive.file_names())
+            .filter_map(|name| {
+                // Handle case-insensitive "pics/" prefix
+                if name.len() >= 5
+                    && name.is_char_boundary(5)
+                    && name[..5].eq_ignore_ascii_case("pics/")
+                {
+                    Some(name[5..].to_string())
+                } else {
+                    None
+                }
+            })
     }
 }
 
