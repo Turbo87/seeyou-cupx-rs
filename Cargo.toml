@@ -1,6 +1,6 @@
 [package]
 name = "seeyou-cupx"
-version = "0.0.0"
+version = "0.0.1"
 description = "A Rust library for parsing and writing SeeYou CUPX files, commonly used in aviation and gliding for waypoints with attached pictures"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Turbo87/seeyou-cupx-rs"
