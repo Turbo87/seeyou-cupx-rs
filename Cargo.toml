@@ -21,6 +21,10 @@ insta = "1.43.2"
 name = "cupx_parsing"
 harness = false
 
+[[bench]]
+name = "cupx_writing"
+harness = false
+
 [package.metadata.release]
 pre-release-commit-message = "Release v{{version}}"
 tag-message = ""
