@@ -2,13 +2,14 @@ use limited_reader::LimitedReader;
 use seeyou_cup::{CupEncoding, CupFile, Task, Waypoint};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+use std::ops::Range;
 use std::path::Path;
 
 mod limited_reader;
 
 pub struct CupxFile<R> {
     cup_file: CupFile,
-    pics_archive: Option<zip::ZipArchive<LimitedReader<R>>>,
+    pics_archive: Option<zip::ZipArchive<LimitedReader<R, Range<u64>>>>,
 }
 
 impl CupxFile<File> {
@@ -69,7 +70,7 @@ impl<R: Read + Seek> CupxFile<R> {
         let mut warnings = Vec::new();
 
         // Determine points archive range and whether pics exist
-        let (points_start, points_end, pics_boundary) = if let Some(first_eocd_offset) = prev {
+        let (points_start, pics_boundary) = if let Some(first_eocd_offset) = prev {
             // Two ZIP archives found (normal case with pictures)
             // Calculate the boundary: first EOCD offset + EOCD record length
             // Read comment length from first EOCD to get full record size
@@ -79,19 +80,19 @@ impl<R: Read + Seek> CupxFile<R> {
             let comment_len = u16::from_le_bytes(comment_len_buf) as u64;
 
             let boundary = first_eocd_offset + EOCD_MIN_SIZE + comment_len;
-            (boundary, file_size, Some(boundary))
+            (boundary, Some(boundary))
         } else if current.is_some() {
             // Only one ZIP archive found (no pictures)
             warnings.push(Warning {
                 message: "CUPX file contains no pictures archive".to_string(),
             });
-            (0, file_size, None)
+            (0, None)
         } else {
             return Err(Error::InvalidCupx);
         };
 
         // Read the points archive to get the CUP file
-        let points_reader = LimitedReader::new(reader, points_start, points_end)?;
+        let points_reader = LimitedReader::new(reader, points_start..)?;
         let mut points_archive = zip::ZipArchive::new(points_reader)?;
 
         let cup_file = points_archive.by_name("POINTS.CUP")?;
@@ -104,7 +105,7 @@ impl<R: Read + Seek> CupxFile<R> {
         let pics_archive = if let Some(boundary) = pics_boundary {
             let limited_reader = points_archive.into_inner();
             let reader = limited_reader.into_inner();
-            let pics_reader = LimitedReader::new(reader, 0, boundary)?;
+            let pics_reader = LimitedReader::new(reader, 0..boundary)?;
             Some(zip::ZipArchive::new(pics_reader)?)
         } else {
             None
