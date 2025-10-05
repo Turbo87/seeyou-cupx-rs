@@ -1,13 +1,17 @@
+use limited_reader::LimitedReader;
 use seeyou_cup::{CupEncoding, CupFile, Task, Waypoint};
 use std::fs::File;
-use std::io::{Read, Seek};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
-pub struct CupxFile {
+mod limited_reader;
+
+pub struct CupxFile<R> {
     cup_file: CupFile,
+    pics_archive: zip::ZipArchive<LimitedReader<R>>,
 }
 
-impl CupxFile {
+impl CupxFile<File> {
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<(Self, Vec<Warning>), Error> {
         let file = File::open(path)?;
         Self::from_reader(file)
@@ -19,19 +23,21 @@ impl CupxFile {
         let file = File::open(path)?;
         Self::from_reader_with_encoding(file, encoding)
     }
+}
 
-    pub fn from_reader<R: Read + Seek>(reader: R) -> Result<(Self, Vec<Warning>), Error> {
+impl<R: Read + Seek> CupxFile<R> {
+    pub fn from_reader(reader: R) -> Result<(Self, Vec<Warning>), Error> {
         Self::from_reader_inner(reader, None)
     }
 
-    pub fn from_reader_with_encoding<R: Read + Seek>(
+    pub fn from_reader_with_encoding(
         reader: R,
         encoding: CupEncoding,
     ) -> Result<(Self, Vec<Warning>), Error> {
         Self::from_reader_inner(reader, Some(encoding))
     }
 
-    fn from_reader_inner<R: Read + Seek>(
+    fn from_reader_inner(
         mut reader: R,
         encoding: Option<CupEncoding>,
     ) -> Result<(Self, Vec<Warning>), Error> {
@@ -40,14 +46,14 @@ impl CupxFile {
         const MAX_COMMENT_SIZE: u64 = 65535;
 
         // Get file size
-        reader.seek(std::io::SeekFrom::Start(0))?;
-        let file_size = reader.seek(std::io::SeekFrom::End(0))?;
+        reader.seek(SeekFrom::Start(0))?;
+        let file_size = reader.seek(SeekFrom::End(0))?;
 
         // Find both EOCD signatures by searching backwards
         let search_size = (EOCD_MIN_SIZE + MAX_COMMENT_SIZE).min(file_size);
         let search_start = file_size - search_size;
 
-        reader.seek(std::io::SeekFrom::Start(search_start))?;
+        reader.seek(SeekFrom::Start(search_start))?;
         let mut buffer = vec![0u8; search_size as usize];
         reader.read_exact(&mut buffer)?;
 
@@ -69,21 +75,16 @@ impl CupxFile {
 
         // Calculate the boundary: first EOCD offset + EOCD record length
         // Read comment length from first EOCD to get full record size
-        reader.seek(std::io::SeekFrom::Start(first_eocd_offset + 20))?;
+        reader.seek(SeekFrom::Start(first_eocd_offset + 20))?;
         let mut comment_len_buf = [0u8; 2];
         reader.read_exact(&mut comment_len_buf)?;
         let comment_len = u16::from_le_bytes(comment_len_buf) as u64;
 
         let boundary = first_eocd_offset + EOCD_MIN_SIZE + comment_len;
-        let second_zip_size = file_size - boundary;
 
-        // Create a limited reader for the second ZIP archive
-        reader.seek(std::io::SeekFrom::Start(boundary))?;
-        let mut buf = vec![0u8; second_zip_size as usize];
-        reader.read_exact(&mut buf)?;
-
-        let limited_reader = std::io::Cursor::new(buf);
-        let mut points_archive = zip::ZipArchive::new(limited_reader)?;
+        // First, read the points archive to get the CUP file
+        let points_reader = LimitedReader::new(reader, boundary, file_size)?;
+        let mut points_archive = zip::ZipArchive::new(points_reader)?;
 
         let cup_file = points_archive.by_name("POINTS.CUP")?;
         let (cup_file, _) = match encoding {
@@ -91,7 +92,19 @@ impl CupxFile {
             None => CupFile::from_reader(cup_file)?,
         };
 
-        Ok((Self { cup_file }, Vec::new()))
+        // Now convert points_archive back to the underlying reader and create pics_archive
+        let limited_reader = points_archive.into_inner();
+        let reader = limited_reader.into_inner();
+        let pics_reader = LimitedReader::new(reader, 0, boundary)?;
+        let pics_archive = zip::ZipArchive::new(pics_reader)?;
+
+        Ok((
+            Self {
+                cup_file,
+                pics_archive,
+            },
+            Vec::new(),
+        ))
     }
 
     pub fn cup_file(&self) -> &CupFile {
