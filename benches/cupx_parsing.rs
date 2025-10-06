@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use seeyou_cupx::CupxFile;
 
 fn bench_from_path(c: &mut Criterion) {
