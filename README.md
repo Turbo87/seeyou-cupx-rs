@@ -10,7 +10,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-seeyou-cupx = "0.0.1"
+seeyou-cupx = "0.1.0"
 ```
 
 ## Usage
