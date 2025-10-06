@@ -1,45 +1,4 @@
-//! A Rust library for parsing and writing SeeYou CUPX files.
-//!
-//! CUPX is a file format used in aviation and gliding for storing waypoints with attached
-//! pictures. It consists of two concatenated ZIP archives: a "pics" archive containing images
-//! and a "points" archive containing a `POINTS.CUP` file with waypoint data.
-//!
-//! # Reading CUPX files
-//!
-//! Use [`CupxFile`] to read and parse CUPX files:
-//!
-//! ```no_run
-//! use seeyou_cupx::CupxFile;
-//!
-//! let (cupx, warnings) = CupxFile::from_path("waypoints.cupx")?;
-//!
-//! // Access waypoint data
-//! for waypoint in cupx.waypoints() {
-//!     println!("{}: {}, {}", waypoint.name, waypoint.latitude, waypoint.longitude);
-//! }
-//!
-//! // Access pictures
-//! for pic_name in cupx.picture_names() {
-//!     println!("Picture: {}", pic_name);
-//! }
-//! # Ok::<(), seeyou_cupx::Error>(())
-//! ```
-//!
-//! # Writing CUPX files
-//!
-//! Use [`CupxWriter`] to create CUPX files:
-//!
-//! ```no_run
-//! use seeyou_cupx::CupxWriter;
-//! use seeyou_cup::CupFile;
-//! # use std::path::Path;
-//!
-//! CupxWriter::new(CupFile::default())
-//!     .add_picture("airport.jpg", Path::new("images/airport.jpg"))
-//!     .add_picture("runway.jpg", Path::new("images/runway.jpg"))
-//!     .write_to_path("output.cupx")?;
-//! # Ok::<(), seeyou_cupx::Error>(())
-//! ```
+#![doc = include_str!("../README.md")]
 
 use limited_reader::LimitedReader;
 use seeyou_cup::{CupEncoding, CupFile, Task, Waypoint};

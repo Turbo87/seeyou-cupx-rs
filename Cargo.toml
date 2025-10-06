@@ -28,5 +28,8 @@ harness = false
 [package.metadata.release]
 pre-release-commit-message = "Release v{{version}}"
 tag-message = ""
+pre-release-replacements = [
+    { file="README.md", search="seeyou-cupx = \"[a-z0-9\\.-]+\"", replace="seeyou-cupx = \"{{version}}\"" },
+]
 # Disable `cargo publish` since we use CI for publishing
 publish = false
