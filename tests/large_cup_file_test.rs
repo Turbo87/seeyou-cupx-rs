@@ -18,8 +18,8 @@ fn test_large_cup_file() {
     }
 
     // Write the CUPX file with a small picture to ensure we have two ZIP archives
-    let cupx_buffer = CupxWriter::new(cup_file)
-        .add_picture("test.jpg", b"small test image data".to_vec())
+    let cupx_buffer = CupxWriter::new(&cup_file)
+        .add_picture("test.jpg", &b"small test image data"[..])
         .write_to_vec()
         .unwrap();
 

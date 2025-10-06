@@ -3,7 +3,7 @@ use seeyou_cup::CupFile;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Cursor, Seek, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// A builder for creating CUPX files with waypoint data and pictures.
 ///
@@ -18,46 +18,41 @@ use std::path::{Path, PathBuf};
 /// use seeyou_cup::CupFile;
 /// # use std::path::Path;
 ///
-/// CupxWriter::new(CupFile::default())
+/// # let cup_file = CupFile::default();
+/// CupxWriter::new(&cup_file)
 ///     .add_picture("photo.jpg", Path::new("images/photo.jpg"))
 ///     .write_to_path("output.cupx")?;
 /// # Ok::<(), seeyou_cupx::Error>(())
 /// ```
-pub struct CupxWriter {
-    cup_file: CupFile,
-    pictures: HashMap<String, PictureSource>,
+pub struct CupxWriter<'a> {
+    cup_file: &'a CupFile,
+    pictures: HashMap<&'a str, PictureSource<'a>>,
 }
 
 /// Source of picture data for inclusion in a CUPX file.
 ///
-/// Pictures can be provided either as in-memory byte vectors or as file paths
+/// Pictures can be provided either as in-memory byte slices or as file paths
 /// that will be read when the CUPX file is written.
-pub enum PictureSource {
-    /// Picture data provided as a byte vector in memory.
-    Bytes(Vec<u8>),
+pub enum PictureSource<'a> {
+    /// Picture data provided as a borrowed byte slice.
+    Bytes(&'a [u8]),
     /// Picture data will be read from a file at the given path.
-    Path(PathBuf),
+    Path(&'a Path),
 }
 
-impl From<Vec<u8>> for PictureSource {
-    fn from(bytes: Vec<u8>) -> Self {
+impl<'a> From<&'a [u8]> for PictureSource<'a> {
+    fn from(bytes: &'a [u8]) -> Self {
         PictureSource::Bytes(bytes)
     }
 }
 
-impl From<PathBuf> for PictureSource {
-    fn from(path: PathBuf) -> Self {
+impl<'a> From<&'a Path> for PictureSource<'a> {
+    fn from(path: &'a Path) -> Self {
         PictureSource::Path(path)
     }
 }
 
-impl From<&Path> for PictureSource {
-    fn from(path: &Path) -> Self {
-        PictureSource::Path(path.to_path_buf())
-    }
-}
-
-impl CupxWriter {
+impl<'a> CupxWriter<'a> {
     /// Creates a new CUPX writer with the given waypoint/task data.
     ///
     /// Pictures can be added using [`add_picture`](Self::add_picture).
@@ -69,10 +64,10 @@ impl CupxWriter {
     /// use seeyou_cup::CupFile;
     ///
     /// let cup_file = CupFile::default();
-    /// let writer = CupxWriter::new(cup_file);
+    /// let writer = CupxWriter::new(&cup_file);
     /// # Ok::<(), seeyou_cupx::Error>(())
     /// ```
-    pub fn new(cup_file: CupFile) -> Self {
+    pub fn new(cup_file: &'a CupFile) -> Self {
         Self {
             cup_file,
             pictures: HashMap::new(),
@@ -93,18 +88,20 @@ impl CupxWriter {
     /// use seeyou_cup::CupFile;
     /// # use std::path::Path;
     ///
-    /// CupxWriter::new(CupFile::default())
+    /// # let cup_file = CupFile::default();
+    /// # let image_data = vec![0u8; 100];
+    /// CupxWriter::new(&cup_file)
     ///     .add_picture("photo1.jpg", Path::new("images/photo1.jpg"))
-    ///     .add_picture("photo2.jpg", vec![0u8; 100])
+    ///     .add_picture("photo2.jpg", &image_data[..])
     ///     .write_to_path("output.cupx")?;
     /// # Ok::<(), seeyou_cupx::Error>(())
     /// ```
     pub fn add_picture(
         &mut self,
-        filename: impl Into<String>,
-        source: impl Into<PictureSource>,
+        filename: &'a str,
+        source: impl Into<PictureSource<'a>>,
     ) -> &mut Self {
-        self.pictures.insert(filename.into(), source.into());
+        self.pictures.insert(filename, source.into());
         self
     }
 
@@ -121,7 +118,7 @@ impl CupxWriter {
     pub fn write<W: Write + Seek>(&self, writer: W) -> Result<(), Error> {
         for filename in self.pictures.keys() {
             if filename.is_empty() || filename.contains('/') || filename.contains('\\') {
-                return Err(Error::InvalidFilename(filename.clone()));
+                return Err(Error::InvalidFilename(filename.to_string()));
             }
         }
 
@@ -168,7 +165,8 @@ impl CupxWriter {
     /// use seeyou_cupx::CupxWriter;
     /// use seeyou_cup::CupFile;
     ///
-    /// let bytes = CupxWriter::new(CupFile::default()).write_to_vec()?;
+    /// let cup_file = CupFile::default();
+    /// let bytes = CupxWriter::new(&cup_file).write_to_vec()?;
     /// # Ok::<(), seeyou_cupx::Error>(())
     /// ```
     ///
@@ -190,7 +188,8 @@ impl CupxWriter {
     /// use seeyou_cupx::CupxWriter;
     /// use seeyou_cup::CupFile;
     ///
-    /// CupxWriter::new(CupFile::default()).write_to_path("output.cupx")?;
+    /// let cup_file = CupFile::default();
+    /// CupxWriter::new(&cup_file).write_to_path("output.cupx")?;
     /// # Ok::<(), seeyou_cupx::Error>(())
     /// ```
     ///

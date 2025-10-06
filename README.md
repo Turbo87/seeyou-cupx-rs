@@ -48,7 +48,9 @@ use seeyou_cupx::cup::CupFile;
 use seeyou_cupx::CupxWriter;
 use std::path::Path;
 
-CupxWriter::new(CupFile::default())
+let cup_file = CupFile::default();
+
+CupxWriter::new(&cup_file)
     .add_picture("airport.jpg", Path::new("images/airport.jpg"))
     .add_picture("runway.jpg", Path::new("images/runway.jpg"))
     .write_to_path("output.cupx")?;

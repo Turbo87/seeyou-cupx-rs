@@ -2,11 +2,12 @@ use insta::{assert_binary_snapshot, assert_compact_debug_snapshot};
 use seeyou_cupx::cup::CupFile;
 use seeyou_cupx::{CupxFile, CupxWriter};
 use std::io::{Cursor, Read};
-use std::path::PathBuf;
+use std::path::Path;
 
 #[test]
 fn test_write_empty() {
-    let buffer = CupxWriter::new(CupFile::default()).write_to_vec().unwrap();
+    let cup_file = CupFile::default();
+    let buffer = CupxWriter::new(&cup_file).write_to_vec().unwrap();
 
     let (result, _) = CupxFile::from_reader(Cursor::new(&buffer)).unwrap();
     assert_eq!(result.waypoints().len(), 0);
@@ -16,10 +17,11 @@ fn test_write_empty() {
 
 #[test]
 fn test_write_with_bytes_picture() {
+    let cup_file = CupFile::default();
     let picture_data = b"fake image data".to_vec();
 
-    let buffer = CupxWriter::new(CupFile::default())
-        .add_picture("test.jpg", picture_data.clone())
+    let buffer = CupxWriter::new(&cup_file)
+        .add_picture("test.jpg", &picture_data[..])
         .write_to_vec()
         .unwrap();
 
@@ -38,8 +40,9 @@ fn test_write_with_bytes_picture() {
 
 #[test]
 fn test_write_with_path_picture() {
-    let buffer = CupxWriter::new(CupFile::default())
-        .add_picture("2_1034.jpg", PathBuf::from("tests/fixtures/2_1034.jpg"))
+    let cup_file = CupFile::default();
+    let buffer = CupxWriter::new(&cup_file)
+        .add_picture("2_1034.jpg", Path::new("tests/fixtures/2_1034.jpg"))
         .write_to_vec()
         .unwrap();
 
@@ -58,12 +61,13 @@ fn test_write_with_path_picture() {
 
 #[test]
 fn test_write_duplicate_filename_replaces() {
+    let cup_file = CupFile::default();
     let first_data = b"first".to_vec();
     let second_data = b"second".to_vec();
 
-    let buffer = CupxWriter::new(CupFile::default())
-        .add_picture("test.jpg", first_data)
-        .add_picture("test.jpg", second_data.clone())
+    let buffer = CupxWriter::new(&cup_file)
+        .add_picture("test.jpg", &first_data[..])
+        .add_picture("test.jpg", &second_data[..])
         .write_to_vec()
         .unwrap();
 
@@ -82,10 +86,11 @@ fn test_write_duplicate_filename_replaces() {
 
 #[test]
 fn test_write_multiple_pictures() {
-    let buffer = CupxWriter::new(CupFile::default())
-        .add_picture("a.jpg", b"data a".to_vec())
-        .add_picture("b.jpg", b"data b".to_vec())
-        .add_picture("c.jpg", b"data c".to_vec())
+    let cup_file = CupFile::default();
+    let buffer = CupxWriter::new(&cup_file)
+        .add_picture("a.jpg", &b"data a"[..])
+        .add_picture("b.jpg", &b"data b"[..])
+        .add_picture("c.jpg", &b"data c"[..])
         .write_to_vec()
         .unwrap();
 
@@ -97,8 +102,9 @@ fn test_write_multiple_pictures() {
 
 #[test]
 fn test_write_invalid_filename_empty() {
-    let result = CupxWriter::new(CupFile::default())
-        .add_picture("", b"data".to_vec())
+    let cup_file = CupFile::default();
+    let result = CupxWriter::new(&cup_file)
+        .add_picture("", &b"data"[..])
         .write_to_vec();
 
     assert_compact_debug_snapshot!(result, @r#"Err(InvalidFilename(""))"#);
@@ -106,8 +112,9 @@ fn test_write_invalid_filename_empty() {
 
 #[test]
 fn test_write_invalid_filename_with_slash() {
-    let result = CupxWriter::new(CupFile::default())
-        .add_picture("path/to/file.jpg", b"data".to_vec())
+    let cup_file = CupFile::default();
+    let result = CupxWriter::new(&cup_file)
+        .add_picture("path/to/file.jpg", &b"data"[..])
         .write_to_vec();
 
     assert_compact_debug_snapshot!(result, @r#"Err(InvalidFilename("path/to/file.jpg"))"#);
@@ -115,8 +122,9 @@ fn test_write_invalid_filename_with_slash() {
 
 #[test]
 fn test_write_invalid_filename_with_backslash() {
-    let result = CupxWriter::new(CupFile::default())
-        .add_picture("path\\to\\file.jpg", b"data".to_vec())
+    let cup_file = CupFile::default();
+    let result = CupxWriter::new(&cup_file)
+        .add_picture("path\\to\\file.jpg", &b"data"[..])
         .write_to_vec();
 
     assert_compact_debug_snapshot!(result, @r#"Err(InvalidFilename("path\\to\\file.jpg"))"#);
@@ -124,8 +132,9 @@ fn test_write_invalid_filename_with_backslash() {
 
 #[test]
 fn test_write_nonexistent_path() {
-    let result = CupxWriter::new(CupFile::default())
-        .add_picture("test.jpg", PathBuf::from("nonexistent/file.jpg"))
+    let cup_file = CupFile::default();
+    let result = CupxWriter::new(&cup_file)
+        .add_picture("test.jpg", Path::new("nonexistent/file.jpg"))
         .write_to_vec();
 
     assert_compact_debug_snapshot!(result, @r#"Err(Io(Os { code: 2, kind: NotFound, message: "No such file or directory" }))"#);
@@ -133,10 +142,11 @@ fn test_write_nonexistent_path() {
 
 #[test]
 fn test_write_to_path() {
+    let cup_file = CupFile::default();
     let temp_path = std::env::temp_dir().join("test_cupx_writer.cupx");
 
-    CupxWriter::new(CupFile::default())
-        .add_picture("test.jpg", b"test data".to_vec())
+    CupxWriter::new(&cup_file)
+        .add_picture("test.jpg", &b"test data"[..])
         .write_to_path(&temp_path)
         .unwrap();
 
