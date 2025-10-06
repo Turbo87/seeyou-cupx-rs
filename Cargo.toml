@@ -9,7 +9,7 @@ exclude = [".github/*", "benches/*", "docs/*", "examples/*", "tests/*", ".gitign
 
 [dependencies]
 memchr = "2.7.4"
-seeyou-cup = "0.2.0"
+seeyou-cup = "0.3.0"
 thiserror = "2.0.17"
 zip = { version = "5.1.1", default-features = false, features = ["deflate"] }
 

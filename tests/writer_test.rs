@@ -1,5 +1,5 @@
 use insta::{assert_binary_snapshot, assert_compact_debug_snapshot};
-use seeyou_cup::CupFile;
+use seeyou_cupx::cup::CupFile;
 use seeyou_cupx::{CupxFile, CupxWriter};
 use std::io::{Cursor, Read};
 use std::path::PathBuf;

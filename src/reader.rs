@@ -1,6 +1,6 @@
 use crate::error::{Error, Warning};
 use crate::limited_reader::LimitedReader;
-use seeyou_cup::{CupEncoding, CupFile, Task, Waypoint};
+use seeyou_cup::{CupFile, Encoding, Task, Waypoint};
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
@@ -64,7 +64,7 @@ impl CupxFile<File> {
     /// or contains invalid CUP data.
     pub fn from_path_with_encoding<P: AsRef<Path>>(
         path: P,
-        encoding: CupEncoding,
+        encoding: Encoding,
     ) -> Result<(Self, Vec<Warning>), Error> {
         let file = File::open(path)?;
         Self::from_reader_with_encoding(file, encoding)
@@ -95,7 +95,7 @@ impl<R: Read + Seek> CupxFile<R> {
     /// if the CUP data is invalid.
     pub fn from_reader_with_encoding(
         reader: R,
-        encoding: CupEncoding,
+        encoding: Encoding,
     ) -> Result<(Self, Vec<Warning>), Error> {
         Self::from_reader_inner(reader, Some(encoding))
     }
@@ -108,7 +108,7 @@ impl<R: Read + Seek> CupxFile<R> {
     /// the file contains no pictures.
     fn from_reader_inner(
         mut reader: R,
-        encoding: Option<CupEncoding>,
+        encoding: Option<Encoding>,
     ) -> Result<(Self, Vec<Warning>), Error> {
         const EOCD_SIGNATURE: &[u8] = b"PK\x05\x06";
         const EOCD_MIN_SIZE: u64 = 22;

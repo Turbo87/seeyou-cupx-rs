@@ -1,4 +1,4 @@
-use seeyou_cup::{CupFile, Elevation, Waypoint, WaypointStyle};
+use seeyou_cupx::cup::{CupFile, Elevation, Waypoint, WaypointStyle};
 use seeyou_cupx::{CupxFile, CupxWriter};
 use std::io::Cursor;
 

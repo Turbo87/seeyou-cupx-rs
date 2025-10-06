@@ -44,8 +44,8 @@ reader.read_to_end(&mut buffer)?;
 ### Writing CUPX files
 
 ```rust,no_run
+use seeyou_cupx::cup::CupFile;
 use seeyou_cupx::CupxWriter;
-use seeyou_cup::CupFile;
 use std::path::Path;
 
 CupxWriter::new(CupFile::default())
@@ -61,10 +61,10 @@ CupxWriter::new(CupFile::default())
 By default, the library automatically detects the text encoding of CUP files. If you know the encoding beforehand:
 
 ```rust,no_run
+use seeyou_cupx::cup::Encoding;
 use seeyou_cupx::CupxFile;
-use seeyou_cup::CupEncoding;
 
-let (cupx, warnings) = CupxFile::from_path_with_encoding("waypoints.cupx", CupEncoding::Utf8)?;
+let (cupx, warnings) = CupxFile::from_path_with_encoding("waypoints.cupx", Encoding::Utf8)?;
 
 # Ok::<(), seeyou_cupx::Error>(())
 ```
