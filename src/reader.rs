@@ -112,33 +112,51 @@ impl<R: Read + Seek> CupxFile<R> {
     ) -> Result<(Self, Vec<Warning>), Error> {
         const EOCD_SIGNATURE: &[u8] = b"PK\x05\x06";
         const EOCD_MIN_SIZE: u64 = 22;
-        const MAX_COMMENT_SIZE: u64 = 65535;
+        const CHUNK_SIZE: u64 = 65536; // 64KB chunks for incremental search
 
         // Get file size
         reader.seek(SeekFrom::Start(0))?;
         let file_size = reader.seek(SeekFrom::End(0))?;
 
-        // Find both EOCD signatures by searching backwards
-        let search_size = (EOCD_MIN_SIZE + MAX_COMMENT_SIZE).min(file_size);
-        let search_start = file_size - search_size;
+        // Find both EOCD signatures by searching backwards incrementally
+        let mut last_eocd: Option<u64> = None;
+        let mut second_last_eocd: Option<u64> = None;
+        let mut search_end = file_size;
 
-        reader.seek(SeekFrom::Start(search_start))?;
-        let mut buffer = vec![0u8; search_size as usize];
-        reader.read_exact(&mut buffer)?;
+        // Search backwards in chunks until we find 2 EOCDs or reach the beginning
+        while second_last_eocd.is_none() && search_end > 0 {
+            let chunk_size = CHUNK_SIZE.min(search_end);
+            let chunk_start = search_end - chunk_size;
 
-        // Find the second-to-last EOCD signature using fast pattern matching
-        let mut prev = None;
-        let mut current = None;
+            reader.seek(SeekFrom::Start(chunk_start))?;
+            let mut chunk_buffer = vec![0u8; chunk_size as usize];
+            reader.read_exact(&mut chunk_buffer)?;
 
-        for offset in memchr::memmem::find_iter(&buffer, EOCD_SIGNATURE) {
-            prev = current;
-            current = Some(search_start + offset as u64);
+            // Find the last two EOCDs in this chunk
+            // Since we iterate forward, the last ones we see are the rightmost
+            let mut chunk_last: Option<u64> = None;
+            let mut chunk_second_last: Option<u64> = None;
+
+            for offset in memchr::memmem::find_iter(&chunk_buffer, EOCD_SIGNATURE) {
+                chunk_second_last = chunk_last;
+                chunk_last = Some(chunk_start + offset as u64);
+            }
+
+            // Update global tracking: first chunk provides both, subsequent chunks provide second-to-last
+            if last_eocd.is_none() {
+                last_eocd = chunk_last;
+                second_last_eocd = chunk_second_last;
+            } else if second_last_eocd.is_none() && chunk_last.is_some() {
+                second_last_eocd = chunk_last;
+            }
+
+            search_end = chunk_start;
         }
 
         let mut warnings = Vec::new();
 
         // Determine points archive range and whether pics exist
-        let pics_boundary = if let Some(first_eocd_offset) = prev {
+        let pics_boundary = if let Some(first_eocd_offset) = second_last_eocd {
             // Two ZIP archives found (normal case with pictures)
             // Calculate the boundary: first EOCD offset + EOCD record length
             // Read comment length from first EOCD to get full record size
@@ -149,7 +167,7 @@ impl<R: Read + Seek> CupxFile<R> {
 
             let boundary = first_eocd_offset + EOCD_MIN_SIZE + comment_len;
             Some(boundary)
-        } else if current.is_some() {
+        } else if last_eocd.is_some() {
             // Only one ZIP archive found (no pictures)
             warnings.push(Warning::NoPicturesArchive);
             None
