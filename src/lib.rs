@@ -1,3 +1,46 @@
+//! A Rust library for parsing and writing SeeYou CUPX files.
+//!
+//! CUPX is a file format used in aviation and gliding for storing waypoints with attached
+//! pictures. It consists of two concatenated ZIP archives: a "pics" archive containing images
+//! and a "points" archive containing a `POINTS.CUP` file with waypoint data.
+//!
+//! # Reading CUPX files
+//!
+//! Use [`CupxFile`] to read and parse CUPX files:
+//!
+//! ```no_run
+//! use seeyou_cupx::CupxFile;
+//!
+//! let (cupx, warnings) = CupxFile::from_path("waypoints.cupx")?;
+//!
+//! // Access waypoint data
+//! for waypoint in cupx.waypoints() {
+//!     println!("{}: {}, {}", waypoint.name, waypoint.latitude, waypoint.longitude);
+//! }
+//!
+//! // Access pictures
+//! for pic_name in cupx.picture_names() {
+//!     println!("Picture: {}", pic_name);
+//! }
+//! # Ok::<(), seeyou_cupx::Error>(())
+//! ```
+//!
+//! # Writing CUPX files
+//!
+//! Use [`CupxWriter`] to create CUPX files:
+//!
+//! ```no_run
+//! use seeyou_cupx::CupxWriter;
+//! use seeyou_cup::CupFile;
+//! # use std::path::Path;
+//!
+//! CupxWriter::new(CupFile::default())
+//!     .add_picture("airport.jpg", Path::new("images/airport.jpg"))
+//!     .add_picture("runway.jpg", Path::new("images/runway.jpg"))
+//!     .write_to_path("output.cupx")?;
+//! # Ok::<(), seeyou_cupx::Error>(())
+//! ```
+
 use limited_reader::LimitedReader;
 use seeyou_cup::{CupEncoding, CupFile, Task, Waypoint};
 use std::collections::HashMap;
@@ -8,16 +51,62 @@ use std::path::{Path, PathBuf};
 
 mod limited_reader;
 
+/// A parsed CUPX file containing waypoint data and optional pictures.
+///
+/// CUPX files consist of two concatenated ZIP archives. The first contains pictures
+/// in a `pics/` directory, and the second contains a `POINTS.CUP` file with waypoint
+/// and task data.
+///
+/// The generic parameter `R` is the underlying reader type, which must implement
+/// [`Read`] and [`Seek`].
+///
+/// # Examples
+///
+/// ```no_run
+/// use seeyou_cupx::CupxFile;
+///
+/// let (cupx, warnings) = CupxFile::from_path("waypoints.cupx")?;
+/// println!("Loaded {} waypoints", cupx.waypoints().len());
+/// # Ok::<(), seeyou_cupx::Error>(())
+/// ```
 pub struct CupxFile<R> {
     cup_file: CupFile,
     pics_archive: Option<zip::ZipArchive<LimitedReader<R, Range<u64>>>>,
 }
 
 impl CupxFile<File> {
+    /// Opens and parses a CUPX file from the given path.
+    ///
+    /// The text encoding of the CUP file is detected automatically.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use seeyou_cupx::CupxFile;
+    ///
+    /// let (cupx, warnings) = CupxFile::from_path("waypoints.cupx")?;
+    /// println!("Loaded {} waypoints", cupx.waypoints().len());
+    /// # Ok::<(), seeyou_cupx::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be opened, is not a valid CUPX file,
+    /// or contains invalid CUP data.
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<(Self, Vec<Warning>), Error> {
         let file = File::open(path)?;
         Self::from_reader(file)
     }
+
+    /// Opens and parses a CUPX file from the given path with a specific encoding.
+    ///
+    /// Use this when you know the encoding of the CUP file and want to avoid
+    /// automatic detection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be opened, is not a valid CUPX file,
+    /// or contains invalid CUP data.
     pub fn from_path_with_encoding<P: AsRef<Path>>(
         path: P,
         encoding: CupEncoding,
@@ -28,10 +117,27 @@ impl CupxFile<File> {
 }
 
 impl<R: Read + Seek> CupxFile<R> {
+    /// Parses a CUPX file from a reader.
+    ///
+    /// The text encoding of the CUP file is detected automatically.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the reader does not contain a valid CUPX file or
+    /// if the CUP data is invalid.
     pub fn from_reader(reader: R) -> Result<(Self, Vec<Warning>), Error> {
         Self::from_reader_inner(reader, None)
     }
 
+    /// Parses a CUPX file from a reader with a specific encoding.
+    ///
+    /// Use this when you know the encoding of the CUP file and want to avoid
+    /// automatic detection.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the reader does not contain a valid CUPX file or
+    /// if the CUP data is invalid.
     pub fn from_reader_with_encoding(
         reader: R,
         encoding: CupEncoding,
@@ -39,6 +145,12 @@ impl<R: Read + Seek> CupxFile<R> {
         Self::from_reader_inner(reader, Some(encoding))
     }
 
+    /// Parses a CUPX file by locating the two ZIP archives within it.
+    ///
+    /// CUPX files contain two concatenated ZIP archives. This method finds both by
+    /// searching for End of Central Directory (EOCD) signatures. The EOCD of the first
+    /// archive marks the boundary between the two archives. If only one EOCD is found,
+    /// the file contains no pictures.
     fn from_reader_inner(
         mut reader: R,
         encoding: Option<CupEncoding>,
@@ -127,21 +239,47 @@ impl<R: Read + Seek> CupxFile<R> {
         Ok((cupx_file, warnings))
     }
 
+    /// Returns a reference to the parsed CUP file data.
+    ///
+    /// The [`CupFile`] contains all waypoints and tasks from the CUPX file.
     pub fn cup_file(&self) -> &CupFile {
         &self.cup_file
     }
 
+    /// Returns a slice of all waypoints in the file.
     pub fn waypoints(&self) -> &[Waypoint] {
         &self.cup_file().waypoints
     }
 
+    /// Returns a slice of all tasks in the file.
     pub fn tasks(&self) -> &[Task] {
         &self.cup_file().tasks
     }
 
-    /// Get reader for image by filename (without "pics/" prefix)
-    /// Returns error if image doesn't exist
-    /// Only one image can be read at a time (requires &mut self)
+    /// Returns a reader for the picture with the given filename.
+    ///
+    /// The filename should not include the `pics/` prefix. Matching is case-insensitive.
+    ///
+    /// Only one picture can be read at a time, as this method requires `&mut self`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use seeyou_cupx::CupxFile;
+    /// use std::io::Read;
+    ///
+    /// let (mut cupx, _) = CupxFile::from_path("waypoints.cupx")?;
+    /// let mut reader = cupx.read_picture("airport.jpg")?;
+    ///
+    /// let mut buffer = Vec::new();
+    /// reader.read_to_end(&mut buffer)?;
+    /// # Ok::<(), seeyou_cupx::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the picture doesn't exist or if the CUPX file
+    /// doesn't contain a pictures archive.
     pub fn read_picture(&mut self, filename: &str) -> Result<impl Read + '_, Error> {
         let pics_archive = self
             .pics_archive
@@ -165,7 +303,23 @@ impl<R: Read + Seek> CupxFile<R> {
         Ok(file)
     }
 
-    /// Iterator over all available image filenames (without "pics/" prefix)
+    /// Returns an iterator over all picture filenames in the CUPX file.
+    ///
+    /// Filenames do not include the `pics/` prefix. If the CUPX file doesn't
+    /// contain a pictures archive, the iterator will be empty.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use seeyou_cupx::CupxFile;
+    ///
+    /// let (cupx, _) = CupxFile::from_path("waypoints.cupx")?;
+    ///
+    /// for name in cupx.picture_names() {
+    ///     println!("Picture: {}", name);
+    /// }
+    /// # Ok::<(), seeyou_cupx::Error>(())
+    /// ```
     pub fn picture_names(&self) -> impl Iterator<Item = String> + '_ {
         self.pics_archive
             .as_ref()
@@ -185,13 +339,37 @@ impl<R: Read + Seek> CupxFile<R> {
     }
 }
 
+/// A builder for creating CUPX files with waypoint data and pictures.
+///
+/// `CupxWriter` allows you to construct a CUPX file by providing waypoint/task data
+/// via a [`CupFile`] and optionally adding pictures that will be included in the
+/// output file.
+///
+/// # Examples
+///
+/// ```no_run
+/// use seeyou_cupx::CupxWriter;
+/// use seeyou_cup::CupFile;
+/// # use std::path::Path;
+///
+/// CupxWriter::new(CupFile::default())
+///     .add_picture("photo.jpg", Path::new("images/photo.jpg"))
+///     .write_to_path("output.cupx")?;
+/// # Ok::<(), seeyou_cupx::Error>(())
+/// ```
 pub struct CupxWriter {
     cup_file: CupFile,
     pictures: HashMap<String, PictureSource>,
 }
 
+/// Source of picture data for inclusion in a CUPX file.
+///
+/// Pictures can be provided either as in-memory byte vectors or as file paths
+/// that will be read when the CUPX file is written.
 pub enum PictureSource {
+    /// Picture data provided as a byte vector in memory.
     Bytes(Vec<u8>),
+    /// Picture data will be read from a file at the given path.
     Path(PathBuf),
 }
 
@@ -214,6 +392,20 @@ impl From<&Path> for PictureSource {
 }
 
 impl CupxWriter {
+    /// Creates a new CUPX writer with the given waypoint/task data.
+    ///
+    /// Pictures can be added using [`add_picture`](Self::add_picture).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use seeyou_cupx::CupxWriter;
+    /// use seeyou_cup::CupFile;
+    ///
+    /// let cup_file = CupFile::default();
+    /// let writer = CupxWriter::new(cup_file);
+    /// # Ok::<(), seeyou_cupx::Error>(())
+    /// ```
     pub fn new(cup_file: CupFile) -> Self {
         Self {
             cup_file,
@@ -221,6 +413,26 @@ impl CupxWriter {
         }
     }
 
+    /// Adds a picture to the CUPX file.
+    ///
+    /// The `filename` is the name the picture will have in the archive (without
+    /// the `pics/` prefix). The `source` can be either a file path or byte data.
+    ///
+    /// Returns a mutable reference to `self` for method chaining.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use seeyou_cupx::CupxWriter;
+    /// use seeyou_cup::CupFile;
+    /// # use std::path::Path;
+    ///
+    /// CupxWriter::new(CupFile::default())
+    ///     .add_picture("photo1.jpg", Path::new("images/photo1.jpg"))
+    ///     .add_picture("photo2.jpg", vec![0u8; 100])
+    ///     .write_to_path("output.cupx")?;
+    /// # Ok::<(), seeyou_cupx::Error>(())
+    /// ```
     pub fn add_picture(
         &mut self,
         filename: impl Into<String>,
@@ -230,6 +442,16 @@ impl CupxWriter {
         self
     }
 
+    /// Writes the CUPX file to the given writer.
+    ///
+    /// The writer must implement both [`Write`] and [`Seek`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Any picture filename is invalid (empty or contains path separators)
+    /// - A picture file cannot be read
+    /// - Writing to the output fails
     pub fn write<W: Write + Seek>(&self, writer: W) -> Result<(), Error> {
         for filename in self.pictures.keys() {
             if filename.is_empty() || filename.contains('/') || filename.contains('\\') {
@@ -269,34 +491,92 @@ impl CupxWriter {
         Ok(())
     }
 
+    /// Writes the CUPX file to a byte vector.
+    ///
+    /// This is a convenience method that creates an in-memory buffer and
+    /// writes the CUPX file to it.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use seeyou_cupx::CupxWriter;
+    /// use seeyou_cup::CupFile;
+    ///
+    /// let bytes = CupxWriter::new(CupFile::default()).write_to_vec()?;
+    /// # Ok::<(), seeyou_cupx::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any picture filename is invalid or if a picture
+    /// file cannot be read.
     pub fn write_to_vec(&self) -> Result<Vec<u8>, Error> {
         let mut buffer = Vec::new();
         self.write(Cursor::new(&mut buffer))?;
         Ok(buffer)
     }
 
+    /// Writes the CUPX file to the given path.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use seeyou_cupx::CupxWriter;
+    /// use seeyou_cup::CupFile;
+    ///
+    /// CupxWriter::new(CupFile::default()).write_to_path("output.cupx")?;
+    /// # Ok::<(), seeyou_cupx::Error>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The file cannot be created
+    /// - Any picture filename is invalid
+    /// - A picture file cannot be read
+    /// - Writing to the output fails
     pub fn write_to_path(&self, path: impl AsRef<Path>) -> Result<(), Error> {
         let file = File::create(path)?;
         self.write(file)
     }
 }
 
+/// Non-fatal warnings that may occur when parsing a CUPX file.
+///
+/// Warnings indicate issues that don't prevent the file from being read,
+/// but may indicate missing data or parsing concerns.
 #[derive(Debug, Clone)]
 pub enum Warning {
+    /// The CUPX file does not contain a pictures archive.
     NoPicturesArchive,
+    /// An issue occurred while parsing the CUP file data.
+    ///
+    /// The `message` describes the issue, and `line` indicates the line number
+    /// in the CUP file where it occurred, if available.
     CupParseIssue { message: String, line: Option<u64> },
 }
 
+/// Errors that can occur when reading or writing CUPX files.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An I/O error occurred.
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// An error occurred while reading or writing a ZIP archive.
     #[error(transparent)]
     Zip(#[from] zip::result::ZipError),
+    /// An error occurred while parsing the CUP file data.
     #[error(transparent)]
     Cup(#[from] seeyou_cup::Error),
+    /// The file is not a valid CUPX file.
+    ///
+    /// This typically means the required ZIP archive structure could not be found.
     #[error("Invalid CUPX file: could not find two ZIP archives")]
     InvalidCupx,
+    /// A picture filename is invalid.
+    ///
+    /// Picture filenames must not be empty and must not contain path separators
+    /// (`/` or `\`).
     #[error("Invalid picture filename: {0}")]
     InvalidFilename(String),
 }

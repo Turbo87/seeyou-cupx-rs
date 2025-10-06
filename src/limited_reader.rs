@@ -1,6 +1,14 @@
 use std::io::{Read, Seek, SeekFrom};
 use std::ops::{Bound, RangeBounds};
 
+/// A reader wrapper that restricts access to a specific byte range of the underlying reader.
+///
+/// This is used to read individual ZIP archives from a CUPX file, which contains two
+/// concatenated ZIP archives. By limiting the readable range, each ZIP archive can be
+/// parsed independently without interference from the other.
+///
+/// The reader translates all operations to work within the specified range, making it
+/// appear to consumers as if only that portion of the data exists.
 pub struct LimitedReader<R, B: RangeBounds<u64>> {
     inner: R,
     range: B,
