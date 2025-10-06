@@ -7,4 +7,5 @@ mod writer;
 
 pub use error::{Error, Warning};
 pub use reader::CupxFile;
+pub use seeyou_cup as cup;
 pub use writer::{CupxWriter, PictureSource};
